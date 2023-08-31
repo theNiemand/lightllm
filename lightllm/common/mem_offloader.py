@@ -1,9 +1,6 @@
 import os
 import torch
 
-# get the env variable LIGHTLLM_OFFLOAD_DEBUG
-LIGHTLLM_OFFLOAD_DEBUG = os.environ.get("LIGHTLLM_OFFLOAD_DEBUG", "0") == "1"
-
 class LayerToCache:
     def __init__(self, layer_num, cache_num) -> None:
         r'''
@@ -107,12 +104,6 @@ class MemoryOffloader:
             key_shape, dtype=dtype, device="cpu", pin_memory=True) for _ in range(layer_num)]
         self.value_buffer_cpu = [torch.empty(
             value_shape, dtype=dtype, device="cpu", pin_memory=True) for _ in range(layer_num)]
-        if LIGHTLLM_OFFLOAD_DEBUG:
-            self.debug_key_buffer_cpu = [torch.empty(
-                key_shape, dtype=dtype, device="cpu", pin_memory=True) for _ in range(layer_num)]
-            self.debug_value_buffer_cpu = [torch.empty(
-                value_shape, dtype=dtype, device="cpu", pin_memory=True) for _ in range(layer_num)]
-
         
     def _allocate_cuda_context(self, layer_num, cache_num):
         if not self.enable: return
@@ -152,16 +143,17 @@ class MemoryOffloader:
         if not self.enable: return
         cache_idx, is_offload = self.layer_to_cache(layer_num)
         index = slice(idx + 1)
-        if LIGHTLLM_OFFLOAD_DEBUG:
-            self.debug_key_buffer_cpu[layer_num][index].copy_(self.mem_manager.key_buffer[cache_idx][index], non_blocking=False)
         if is_offload:
+            # torch.cuda.synchronize()
+            ds = torch.cuda.default_stream()
+            self.offload_stream.wait_stream(ds)
             next_layer_num = self.layer_to_cache.prefetch(layer_num)
             assert self.key_event[cache_idx] == [], f'cache_idx {cache_idx} key_event is not empty'
             with torch.cuda.stream(self.offload_stream):
                 self.key_buffer_cpu[layer_num][index].copy_(
-                    self.mem_manager.key_buffer[cache_idx][index], non_blocking=False)
+                    self.mem_manager.key_buffer[cache_idx][index], non_blocking=True)
                 self.mem_manager.key_buffer[cache_idx][index].copy_(
-                    self.key_buffer_cpu[next_layer_num][index], non_blocking=False)
+                    self.key_buffer_cpu[next_layer_num][index], non_blocking=True)
                 self.key_event[cache_idx].append(
                     self.offload_stream.record_event())
 
@@ -169,16 +161,17 @@ class MemoryOffloader:
         if not self.enable: return
         cache_idx, is_offload = self.layer_to_cache(layer_num)
         index = slice(idx + 1)
-        if LIGHTLLM_OFFLOAD_DEBUG:
-            self.debug_value_buffer_cpu[layer_num][index].copy_(self.mem_manager.value_buffer[cache_idx][index], non_blocking=False)
         if is_offload:
+            # torch.cuda.synchronize()
+            ds = torch.cuda.default_stream()
+            self.offload_stream.wait_stream(ds)
             next_layer_num = self.layer_to_cache.prefetch(layer_num)
             assert self.value_event[cache_idx] == [], f'cache_idx {cache_idx} value_event is not empty'
             with torch.cuda.stream(self.offload_stream):
                 self.value_buffer_cpu[layer_num][index].copy_(
-                    self.mem_manager.value_buffer[cache_idx][index], non_blocking=False)
+                    self.mem_manager.value_buffer[cache_idx][index], non_blocking=True)
                 self.mem_manager.value_buffer[cache_idx][index].copy_(
-                    self.value_buffer_cpu[next_layer_num][index], non_blocking=False)
+                    self.value_buffer_cpu[next_layer_num][index], non_blocking=True)
                 self.value_event[cache_idx].append(
                     self.offload_stream.record_event())
 
