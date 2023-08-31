@@ -26,7 +26,9 @@ class InferStateInfo:
         self.decode_mem_index = None
         self.decode_key_buffer = None 
         self.decode_value_buffer = None
-    
+
+        self.offload_token_number = None
+
     def init_some_extra_state(self, 
             model, 
             batch_size, 

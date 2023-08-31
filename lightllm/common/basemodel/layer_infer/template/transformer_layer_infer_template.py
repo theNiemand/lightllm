@@ -139,3 +139,112 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         self._token_ffn(input_embdings, infer_state, layer_weight)
         return input_embdings
 
+
+class TransformerLayerInferTplOffload(TransformerLayerInferTpl):
+    """
+    """
+    def __init__(self, layer_num, tp_rank, world_size, network_config, mode):
+        super().__init__(layer_num, tp_rank, world_size, network_config, mode)
+    
+    def _pre_cache_kv(self, infer_state:InferStateInfo, layer_weight)->Tuple[torch.Tensor, torch.Tensor]:
+        # prefill cache_k cache_v
+        if infer_state.is_prefill:
+            infer_state.mem_manager.wait_key(self.layer_num_)
+            cache_k = infer_state.prefill_key_buffer
+            infer_state.mem_manager.wait_value(self.layer_num_)
+            cache_v = infer_state.prefill_value_buffer
+            return cache_k, cache_v
+        # decode cache_k cache_v
+        else:
+            if infer_state.decode_is_contiguous:
+                infer_state.mem_manager.wait_key(self.layer_num_)
+                cache_k = infer_state.mem_manager.key_buffer(self.layer_num_)[infer_state.decode_mem_start:infer_state.decode_mem_end, :, :]
+                infer_state.mem_manager.wait_value(self.layer_num_)
+                cache_v = infer_state.mem_manager.value_buffer(self.layer_num_)[infer_state.decode_mem_start:infer_state.decode_mem_end, :, :]
+            else:
+                infer_state.mem_manager.wait_key(self.layer_num_)
+                cache_k = infer_state.decode_key_buffer
+                infer_state.mem_manager.wait_value(self.layer_num_)
+                cache_v = infer_state.decode_value_buffer
+            return cache_k, cache_v
+
+    def _post_cache_kv(self, cache_k, cache_v, infer_state:InferStateInfo, layer_weight):
+        mem_manager = infer_state.mem_manager
+        if infer_state.is_prefill:
+            destindex_copy_kv(cache_k, infer_state.prefill_mem_index, mem_manager.key_buffer(self.layer_num_))
+            infer_state.mem_manager.try_offload_key(self.layer_num_, infer_state.offload_token_number)
+            destindex_copy_kv(cache_v, infer_state.prefill_mem_index, mem_manager.value_buffer(self.layer_num_))
+            infer_state.mem_manager.try_offload_value(self.layer_num_, infer_state.offload_token_number)
+            return
+        else:
+            if not infer_state.decode_is_contiguous:
+                destindex_copy_kv(cache_k, infer_state.decode_mem_index, mem_manager.key_buffer(self.layer_num_))
+                infer_state.mem_manager.try_offload_key(self.layer_num_, infer_state.offload_token_number)
+                destindex_copy_kv(cache_v, infer_state.decode_mem_index, mem_manager.value_buffer(self.layer_num_))
+                infer_state.mem_manager.try_offload_value(self.layer_num_, infer_state.offload_token_number)
+            else:
+                infer_state.mem_manager.try_offload_key(self.layer_num_, infer_state.offload_token_number)
+                infer_state.mem_manager.try_offload_value(self.layer_num_, infer_state.offload_token_number)
+
+    def _context_attention(self, input_embding, infer_state: InferStateInfo, layer_weight):
+        input1 = self._att_norm(input_embding, infer_state, layer_weight)
+        cache_k, cache_v = self._pre_cache_kv(infer_state, layer_weight)
+        q = self._get_qkv(input1, cache_k, cache_v, infer_state, layer_weight)
+        input1 = None
+        self._post_cache_kv(cache_k, cache_v, infer_state, layer_weight)
+        o = self._context_attention_kernel(q, cache_k, cache_v, infer_state, layer_weight)
+        q = None
+        o = self._get_o(o, infer_state, layer_weight)
+        if self.world_size_ > 1:
+            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+        input_embding.add_(o.view(-1, self.embed_dim_))
+        return
+
+    def _context_ffn(self, input_embdings, infer_state: InferStateInfo, layer_weight):
+        input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
+        ffn_out = self._ffn(input1, infer_state, layer_weight)
+        input1 = None
+        if self.world_size_ > 1:
+            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+        input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
+        return
+
+    # this impl dont to use @mark_cost_time
+    def _token_attention(self, input_embding, infer_state: InferStateInfo, layer_weight):
+        input1 = self._att_norm(input_embding, infer_state, layer_weight)
+        cache_k, cache_v = self._pre_cache_kv(infer_state, layer_weight)
+        q = self._get_qkv(input1, cache_k, cache_v, infer_state, layer_weight)
+        input1 = None
+        self._post_cache_kv(cache_k, cache_v, infer_state, layer_weight)
+        o = self._token_attention_kernel(q, infer_state, layer_weight)
+        q = None
+        o = self._get_o(o, infer_state, layer_weight)
+        if self.world_size_ > 1:
+            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+        input_embding.add_(o.view(-1, self.embed_dim_))
+        return
+
+    # this impl dont to use @mark_cost_time
+    def _token_ffn(self, input_embdings, infer_state: InferStateInfo, layer_weight):
+        input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
+        ffn_out = self._ffn(input1, infer_state, layer_weight)
+        input1 = None
+        if self.world_size_ > 1:
+            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+        input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
+        return
+    
+
+    def context_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
+        self._context_attention(input_embdings,
+                                      infer_state,
+                                      layer_weight=layer_weight)
+        self._context_ffn(input_embdings, infer_state, layer_weight)
+        return input_embdings
+
+    def token_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
+        self._token_attention(input_embdings,
+                                    infer_state,
+                                    layer_weight=layer_weight)
+        self._token_ffn(input_embdings, infer_state, layer_weight)
+        return input_embdings
