@@ -13,6 +13,7 @@ from .layer_infer.template.post_layer_infer_template import PostLayerInferTpl
 from .infer_struct import InferStateInfo
 from .splitfuse_infer_struct import SplitFuseInferStateInfo
 from .basemodel import TpPartBaseModel
+from .basemodel_pp import TpPpPartBaseModel
 
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "TransformerLayerInferTpl",
     "InferStateInfo",
     "TpPartBaseModel",
+    "TpPpPartBaseModel",
     "PreLayerInferTpl",
     "PostLayerInferTpl",
     "TransformerLayerInferWeightQuantTpl",

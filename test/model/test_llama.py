@@ -8,11 +8,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 class TestLlamaInfer(unittest.TestCase):
     def test_llama_infer(self):
-        from lightllm.models.llama.model import LlamaTpPartModel
 
         test_model_inference(
-            world_size=8,
-            model_dir="/path/to/llama-7b",
+            world_size=2,
+            model_dir="/data/test_models/llama-7b",
             model_class=LlamaTpPartModel,
             batch_size=20,
             input_len=1024,
@@ -26,4 +25,13 @@ if __name__ == "__main__":
     import torch
 
     torch.multiprocessing.set_start_method("spawn")
-    unittest.main()
+    from lightllm.models.llama.model import LlamaTpPartModel
+    test_model_inference(
+        world_size=1,
+        model_dir="/data/test_models/llama-7b",
+        model_class=LlamaTpPartModel,
+        batch_size=20,
+        input_len=1024,
+        output_len=1024,
+        mode=[],
+    )

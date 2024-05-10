@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0,1,2,3 PP_RANK=0 python test_llama_pp.py
