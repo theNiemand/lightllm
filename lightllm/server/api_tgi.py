@@ -8,7 +8,7 @@ from .multimodal_params import MultimodalParams
 import json
 
 
-def format_tgi_params(params):
+def format_tgi_params(params, num_beam):
     """
     tgi params format -> lightllm server params format
     pub(crate) struct GenerateParameters {
@@ -38,6 +38,7 @@ def format_tgi_params(params):
         params["return_details"] = params.pop("details", False)
     if "stop_sequences" not in params:
         params["stop_sequences"] = params.pop("stop", None)
+    params["best_of"] = num_beam
     # remove keys lightllm not used
     # params.pop("best_of", 1)
     params.pop("typical_p", 0.0)
@@ -48,6 +49,8 @@ def format_tgi_params(params):
     params.pop("details", False)
     params.pop("decoder_input_details", False)
     params.pop("seed", 0)
+    params.pop("token_healing_top_k", 0)
+    params.pop("token_healing_unmerge_last_token", 0)
     return params
 
 
@@ -55,7 +58,8 @@ async def tgi_generate_impl(request: Request, g_id_gen, httpserver_manager) -> R
 
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
-    sample_params_dict = format_tgi_params(request_dict["parameters"])
+    num_beam = request_dict.pop("num_beam", 1)
+    sample_params_dict = format_tgi_params(request_dict["parameters"], num_beam)
     return_details = sample_params_dict.pop("return_details", False)
     sampling_params = SamplingParams(**sample_params_dict)
     sampling_params.verify()
@@ -101,26 +105,39 @@ async def tgi_generate_impl(request: Request, g_id_gen, httpserver_manager) -> R
         if finish_status.is_finished():
             finish_status_dict[sub_req_id] = finish_status
 
-    rets = []
+    ret = {}
+    beam_sequences = []
+    best_score = -float("inf")
+    best_sub_id = None
     for sub_id in list(final_output_dict.keys()):
-        ret = {
-            "generated_text": "".join(final_output_dict[sub_id]),
-            "count_output_tokens": count_output_tokens_dict[sub_id],
-            "finish_reason": finish_status_dict[sub_id].get_finish_reason(),
-        }
-        if return_details:
-            ret["details"] = {
-                "tokens": tokens_dict[sub_id],
-                "generated_tokens": count_output_tokens_dict[sub_id],
-                "finish_reason": finish_status_dict[sub_id].get_finish_reason(),
-            }
         if prompt_token_ids is not None:
             ret["prompt_token_ids"] = prompt_token_ids
         if prompt_logprobs is not None:
             ret["prompt_logprobs"] = prompt_logprobs
-        rets.append(ret)
+        beam_ret = {
+            "generated_text": "".join(final_output_dict[sub_id]),
+            "finish_reason": finish_status_dict[sub_id].get_finish_reason(),
+            "generated_tokens": count_output_tokens_dict[sub_id],
+            "logprob": tokens_dict[sub_id][-1]["cumlogprob"],
+        }
+        beam_sequences.append(beam_ret)
+        if tokens_dict[sub_id][-1]["cumlogprob"] > best_score:
+            best_score = tokens_dict[sub_id][-1]["cumlogprob"]
+            best_sub_id = sub_id
+    ret = {
+        "generated_text": "".join(final_output_dict[best_sub_id]),
+    }
+    if return_details:
+        if return_details:
+            ret["details"] = {
+                "finish_reason": finish_status_dict[best_sub_id].get_finish_reason(),
+                "prompt_tokens": tokens_dict[best_sub_id][-1]["prompt_tokens"],
+                "generated_tokens": count_output_tokens_dict[best_sub_id],
+                "tokens": tokens_dict[best_sub_id],
+                "beam_sequences": beam_sequences,
+            }
     # wrap generation inside a Vec to match api-inference
-    json_compatible_item_data = jsonable_encoder(rets)
+    json_compatible_item_data = jsonable_encoder(ret)
     return JSONResponse(content=json_compatible_item_data)
 
 
