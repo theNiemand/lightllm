@@ -137,7 +137,7 @@ async def tgi_generate_impl(request: Request, g_id_gen, httpserver_manager) -> R
                 "beam_sequences": beam_sequences,
             }
     # wrap generation inside a Vec to match api-inference
-    json_compatible_item_data = jsonable_encoder(ret)
+    json_compatible_item_data = jsonable_encoder([ret])
     return JSONResponse(content=json_compatible_item_data)
 
 
