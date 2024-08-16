@@ -34,21 +34,13 @@ LightLLM is a Python-based LLM (Large Language Model) inference and serving fram
 
 - [Installation](https://lightllm-en.readthedocs.io/en/latest/getting_started/installation.html)
 - [Quick Start](https://lightllm-en.readthedocs.io/en/latest/getting_started/quickstart.html)
+- [Benchmark](https://lightllm-en.readthedocs.io/en/latest/server/benchmark.html)
 
 ### Examples
 
-- RUN [LLMs](https://lightllm-en.readthedocs.io/en/latest/models/test.html#llama2-70b-chat)
-- RUN [VLMs](https://lightllm-en.readthedocs.io/en/latest/models/test.html#qwen-vl-chat)
-- RUN [Reward LLMs](https://lightllm-en.readthedocs.io/en/latest/models/test.html#internlm2-1-8b-reward)
-
-## [Benchmark](https://lightllm-en.readthedocs.io/en/latest/server/benchmark.html)
-
-### FAQ
-
-- The LLaMA tokenizer fails to load.
-    - consider resolving this by running the command `pip install protobuf==3.20.0`.
-- `error   : PTX .version 7.4 does not support .target sm_89`
-    - launch with `bash tools/resolve_ptx_version python -m lightllm.server.api_server ... `
+- [LLMs](https://lightllm-en.readthedocs.io/en/latest/models/test.html#llama2-70b-chat)
+- [VLMs](https://lightllm-en.readthedocs.io/en/latest/models/test.html#qwen-vl-chat)
+- [Reward LLMs](https://lightllm-en.readthedocs.io/en/latest/models/test.html#internlm2-1-8b-reward)
 
 ## Projects using lightllm
 
