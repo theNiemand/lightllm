@@ -29,7 +29,7 @@ LightLLM is a Python-based LLM (Large Language Model) inference and serving fram
 - Various quantization mode: w8a16, w4a16, w8a8, int8kv.
 - Multiple model support: Regular LLMs, Mixture-of-Expert LLMs, Multimodal LLMs and Reward LLMs. Full list can be found [here](https://lightllm-en.readthedocs.io/en/latest/models/supported_models.html).
 
-**Note**: The naive quantization may face the risk of accuracy degradation, LightLLM can seamlessly integrate with the LLM quantization tool LLMC. For more details, please refer to [here](https://llmc-en.readthedocs.io/en/latest/advanced/model_test.html#use-of-the-lightllm-inference-engine).
+**Note**: The naive quantization may face the risk of accuracy degradation, LightLLM can seamlessly integrate with the LLM quantization tool [LLMC](https://github.com/ModelTC/llmc). For more details, please refer to [here](https://llmc-en.readthedocs.io/en/latest/advanced/model_test.html#use-of-the-lightllm-inference-engine).
 
 ## Get started
 
