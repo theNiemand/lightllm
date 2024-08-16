@@ -24,11 +24,12 @@ LightLLM is a Python-based LLM (Large Language Model) inference and serving fram
 ## HightLight Features
 
 - Tri-process asynchronous collaboration: tokenization, model inference, and detokenization are performed asynchronously, leading to a considerable improvement in GPU utilization.
-- [Token Attention](./docs/TokenAttention.md): implements token-wise's KV cache memory management mechanism, allowing for zero memory waste during inference.
-- High-performance Router: collaborates with Token Attention to meticulously manage the GPU memory of each token, thereby optimizing system throughput.
-- Int8KV Cache: This feature will increase the capacity of tokens to almost twice as much. only llama support.
+- [Token Attention](https://lightllm-en.readthedocs.io/en/latest/dev/token_attention.html): implements token-wise's KV cache memory management mechanism, allowing for zero memory waste during inference.
+- [High-performance Router](https://lightllm-en.readthedocs.io/en/latest/dev/router.html): collaborates with Token Attention to meticulously manage the GPU memory of each token, thereby optimizing system throughput.
+- Various quantization mode: w8a16, w4a16, w8a8, int8kv.
 - Multiple model support: Regular LLMs, Mixture-of-Expert LLMs, Multimodal LLMs and Reward LLMs. Full list can be found [here](https://lightllm-en.readthedocs.io/en/latest/models/supported_models.html).
 
+**Note**: The naive quantization may face the risk of accuracy degradation, LightLLM can seamlessly integrate with the LLM quantization tool LLMC. For more details, please refer to [here](https://llmc-en.readthedocs.io/en/latest/advanced/model_test.html#use-of-the-lightllm-inference-engine).
 
 ## Get started
 
