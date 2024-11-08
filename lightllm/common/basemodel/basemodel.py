@@ -60,6 +60,7 @@ class TpPartBaseModel:
         self.graph_max_len_in_batch = kvargs.get("graph_max_len_in_batch", 8192)
         self.disable_cudagraph = kvargs.get("disable_cudagraph", False)
         self.mem_fraction = kvargs.get("mem_fraction", 0.9)
+        self.disable_custom_all_reduce = kvargs.get("disable_custom_all_reduce", False)
 
         self._init_datatype()
         self._init_config()

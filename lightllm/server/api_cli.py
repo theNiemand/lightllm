@@ -193,4 +193,10 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="""Maximum sequence length that can be captured by the cuda graph for decodign stage.
                 The default value is 8192. It will turn into eagar mode if encounters a larger value. """,
     )
+    parser.add_argument(
+        "--disable_custom_all_reduce",
+        action="store_true",
+        default=False,
+        help="Disable the custom all-reduce kernel and fall back to NCCL.",
+    )
     return parser

@@ -2,7 +2,6 @@ from typing import Tuple
 
 import numpy as np
 import torch
-import torch.distributed as dist
 import torch.functional as F
 import triton
 from functools import partial

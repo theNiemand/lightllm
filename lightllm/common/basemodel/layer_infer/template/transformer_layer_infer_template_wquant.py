@@ -1,5 +1,4 @@
 import torch
-import torch.distributed as dist
 from .transformer_layer_infer_template import TransformerLayerInferTpl
 from ...infer_struct import InferStateInfo
 from ...splitfuse_infer_struct import SplitFuseInferStateInfo

@@ -50,6 +50,12 @@ from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
+from vllm.distributed import (
+    get_tp_group,
+    init_distributed_environment,
+    initialize_model_parallel,
+    set_custom_all_reduce,
+)
 
 
 class ModeBackend:
@@ -58,7 +64,6 @@ class ModeBackend:
 
     def init_model(self, kvargs):
         import torch
-        import torch.distributed as dist
 
         world_size = kvargs["world_size"]
         self.args = kvargs.get("args", None)
@@ -72,6 +77,7 @@ class ModeBackend:
         self.return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
         self.use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
         self.eos_id: List[int] = kvargs.get("eos_id", [2])
+        self.disable_custom_all_reduce = kvargs.get("disable_custom_all_reduce", True)
 
         self.cache = {}
         self.logger = init_logger(__name__)
@@ -79,10 +85,18 @@ class ModeBackend:
         self.weight_dir = kvargs["weight_dir"]
         max_total_token_num = kvargs["max_total_token_num"]
 
-        dist.init_process_group(
-            "nccl", init_method=f'tcp://127.0.0.1:{kvargs["nccl_port"]}', rank=self.tp_rank, world_size=world_size
-        )
         torch.cuda.set_device(self.tp_rank)
+        set_custom_all_reduce(not self.disable_custom_all_reduce)
+        # Multiple nodes are not currently supported, so local_rank == rank
+        init_distributed_environment(
+            backend="nccl",
+            world_size=self.world_size,
+            rank=self.tp_rank,
+            distributed_init_method=f'tcp://127.0.0.1:{kvargs["nccl_port"]}',
+        )
+        initialize_model_parallel(tensor_model_parallel_size=self.world_size)
+        self.tp_group = get_tp_group()
+
 
         model_cfg, _ = PretrainedConfig.get_config_dict(self.weight_dir)
 
@@ -104,6 +118,7 @@ class ModeBackend:
             "disable_cudagraph": kvargs.get("disable_cudagraph", False),
             "mem_fraction": kvargs.get("mem_fraction", 0.9),
             "batch_max_tokens": kvargs.get("batch_max_tokens", None),
+            "disable_custom_all_reduce": kvargs.get("disable_custom_all_reduce", False)
         }
 
         is_weight_only_quant = any("w6a16" in mode_ or "w8a16" in mode_ or "w4a16" in mode_ for mode_ in self.mode)

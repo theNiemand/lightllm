@@ -107,6 +107,7 @@ class RouterManager:
                 "disable_cudagraph": self.args.disable_cudagraph,
                 "mem_fraction": self.args.mem_fraction,
                 "batch_max_tokens": self.args.batch_max_tokens,
+                "disable_custom_all_reduce": self.args.disable_custom_all_reduce
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
 

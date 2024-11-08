@@ -47,10 +47,10 @@ class MemoryManager:
     def profile_size(self, mem_fraction):
         if self.size is not None:
             return
-        import torch.distributed as dist
+        from vllm.distributed import get_tensor_model_parallel_rank, get_tensor_model_parallel_world_size
 
-        tp_rank = dist.get_rank()
-        world_size = dist.get_world_size()
+        tp_rank = get_tensor_model_parallel_rank()
+        world_size = get_tensor_model_parallel_world_size()
         total_memory = get_total_gpu_memory()
         available_memory = get_available_gpu_memory(tp_rank, world_size) - total_memory * (1 - mem_fraction)
         cell_size = self.get_cell_size()
