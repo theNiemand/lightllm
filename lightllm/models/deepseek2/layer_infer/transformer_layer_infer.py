@@ -76,10 +76,13 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         layer_weight: Deepseek2TransformerLayerWeight,
     ) -> torch.Tensor:
         input = input.view(-1, self.embed_dim_)
-        if not self.disable_qk_absorb:
+        # if not self.disable_qk_absorb:
+        if not infer_state.is_prefill:
             if self.q_lora_rank is None:
                 q_nope = layer_weight.fuse_qk_weight_.mm(input)
+                # print(f"q_nope {q_nope.shape}")
                 q_rope = layer_weight.q_rope_proj_.mm(input)
+                # print(f"layer_weight.fuse_qk_weight_ {layer_weight.fuse_qk_weight_.weight.shape}")
             else:
                 q = layer_weight.q_a_proj_.mm(input)
                 rmsnorm_forward(q, weight=layer_weight.q_a_layernorm_.weight, eps=self.eps_, out=q)
@@ -94,36 +97,44 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 q = layer_weight.q_a_proj_.mm(input)
                 rmsnorm_forward(q, weight=layer_weight.q_a_layernorm_.weight, eps=self.eps_, out=q)
                 q = layer_weight.q_b_proj_.mm(q)
-
+            # print(f"q ", q.shape, self.q_lora_rank)
             q = q.view(-1, self.tp_q_head_num_, self.qk_nope_head_dim + self.qk_rope_head_dim)
             q_nope, q_rope = torch.split(q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
-            q_nope = layer_weight.k_b_proj_.bmm(q_nope.transpose(0, 1)).transpose(0, 1)
+            # print(f"q_nope before ", q_nope.shape)
+            # q_nope = layer_weight.k_b_proj_.bmm(q_nope.transpose(0, 1)).transpose(0, 1)
+            # print(f"k_b_proj_ ", layer_weight.k_b_proj_.weight.shape)
 
         layer_weight.kv_a_proj_with_mqa_.mm(input, out=cache_kv.view(-1, self.kv_lora_rank + self.qk_rope_head_dim))
-
+        # print("cache_kv  ", cache_kv.shape)
         rmsnorm_forward(
             cache_kv[:, :, : self.kv_lora_rank],
             weight=layer_weight.kv_a_layernorm_.weight,
             eps=self.eps_,
             out=cache_kv[:, :, : self.kv_lora_rank],
         )
-
         rotary_emb_fwd(
             q_rope,
             cache_kv[:, :, self.kv_lora_rank :],
             infer_state.position_cos,
             infer_state.position_sin,
         )
-        return (q_nope, q_rope), cache_kv
+        if infer_state.is_prefill:
+            kv_nope, kv_rope = (cache_kv[:, :, : self.kv_lora_rank], cache_kv[:, :, self.kv_lora_rank :])
+            kv_nope = layer_weight.k_b_proj_.mm(kv_nope.reshape(-1, self.kv_lora_rank))
+            kv_nope = kv_nope.view([kv_nope.shape[0], -1, self.qk_nope_head_dim])
+            return (q_nope, q_rope), (cache_kv, kv_nope, kv_rope)
+        else:
+            return (q_nope, q_rope), cache_kv
 
     def _get_o(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
     ) -> torch.Tensor:
-        if not self.disable_vo_absorb:
+        # if not self.disable_vo_absorb:
+        if not infer_state.is_prefill:
             input = input.view(-1, self.tp_q_head_num_ * self.kv_lora_rank)
             o_tensor = layer_weight.fuse_vo_weight_.mm(input)
         else:
-            input = layer_weight.v_b_proj_.bmm(input.transpose(0, 1)).transpose(0, 1)
+            # input = layer_weight.v_b_proj_.bmm(input.transpose(0, 1)).transpose(0, 1)
             o_tensor = layer_weight.o_weight_.mm(input.reshape(-1, self.tp_q_head_num_ * self.qk_nope_head_dim))
         return o_tensor
 
@@ -153,9 +164,12 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             context_attention_fwd_no_prompt_cache(
                 q_nope,
                 q_rope,
-                kv[:, :, : self.kv_lora_rank],
-                kv[:, :, self.kv_lora_rank :],
-                o_tensor.view(-1, self.tp_q_head_num_, self.kv_lora_rank),
+                # kv[:, :, : self.kv_lora_rank],
+                # kv[:, :, self.kv_lora_rank :],
+                kv[1],
+                kv[2],
+                # o_tensor.view(-1, self.tp_q_head_num_, self.kv_lora_rank),
+                o_tensor.view(-1, self.tp_q_head_num_, self.qk_nope_head_dim),
                 infer_state.b_start_loc,
                 infer_state.b_seq_len,
                 infer_state.max_len_in_batch,
@@ -184,6 +198,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         )
 
     def _copy_kv_to_mem_cache_normal(self, buffer, mem_index, mem_manager):
+        if isinstance(buffer, tuple):
+            buffer = buffer[0]
         destindex_copy_kv(
             buffer[:, :, : self.kv_lora_rank],
             buffer[:, :, self.kv_lora_rank :],

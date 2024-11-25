@@ -123,9 +123,11 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
 
     def _load_kb(self, kv_b_proj_):
         kv_b_proj_ = kv_b_proj_
+        # print(f"kv_b_proj_  {kv_b_proj_.shape}")
         k_b_proj_ = kv_b_proj_.view(self.num_attention_heads, self.qk_nope_head_dim * 2, self.kv_lora_rank)[
             :, : self.qk_nope_head_dim, :
         ]
+        # print(f"k_b_proj_  {k_b_proj_.shape}")
         return k_b_proj_.contiguous().to(self.data_type_)
 
     def _load_vb(self, kv_b_proj_):
@@ -142,6 +144,9 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             kv_b_proj_ = weights[f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight"]
             weights[f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight"] = self._load_kb(kv_b_proj_)
             weights[f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight"] = self._load_vb(kv_b_proj_)
+
+            # weights[f"model.layers.{self.layer_num_}.self_attn.k_b_proj_1.weight"] = self._load_kb(kv_b_proj_)
+            # weights[f"model.layers.{self.layer_num_}.self_attn.v_b_proj_1.weight"] = self._load_vb(kv_b_proj_)
 
         if self.rope_weight_name in weights:
             rope_weight_ = weights[self.rope_weight_name]
@@ -165,12 +170,12 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                     [q_split_n_embed_with_rope, self.tp_q_head_num_],
                 )
                 self.fuse_qk_weight_._fuse = partial(fuse_q_kb, self.fuse_qk_weight_, self)
-            else:
-                self.q_weight_ = ROWMMWeight(
-                    f"model.layers.{self.layer_num_}.self_attn.q_proj.weight",
-                    self.data_type_,
-                    q_split_n_embed_with_rope,
-                )
+            # else:
+            self.q_weight_ = ROWMMWeight(
+                f"model.layers.{self.layer_num_}.self_attn.q_proj.weight",
+                self.data_type_,
+                q_split_n_embed_with_rope,
+            )
         else:
             self.q_a_proj_ = ROWMMWeightNoTP(
                 f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight",
@@ -205,11 +210,13 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             self.data_type_,
             self.kv_lora_rank + self.qk_rope_head_dim,
         )
-        if self.disable_qk_absorb:
-            self.k_b_proj_ = ROWBMMWeight(
-                f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight",
+        if self.disable_qk_absorb or True:
+            self.k_b_proj_ = ROWMMWeight(
+                # f"model.layers.{self.layer_num_}.self_attn.k_b_proj_1.weight",
+                f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight",
                 self.data_type_,
-                split_n_embed=self.tp_q_head_num_,
+                # split_n_embed=self.tp_q_head_num_,
+                split_n_embed=q_split_n_embed,
             )
         if not self.disable_vo_absorb:
             self.fuse_vo_weight_ = MultiCOLMMWeight(
@@ -221,13 +228,14 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 [self.tp_q_head_num_, q_split_n_embed],
             )
             self.fuse_vo_weight_._fuse = partial(fuse_vb_o, self.fuse_vo_weight_, self)
-        else:
-            self.v_b_proj_ = COLBMMWeight(
-                f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight",
-                self.data_type_,
-                split_n_embed=self.tp_q_head_num_,
-            )
-        if self.disable_vo_absorb:
+        # else:
+        # self.v_b_proj_ = COLBMMWeight(
+        #     f"model.layers.{self.layer_num_}.self_attn.v_b_proj_1.weight",
+        #     self.data_type_,
+        #     split_n_embed=self.tp_q_head_num_,
+        # )
+
+        if self.disable_vo_absorb or True:
             self.o_weight_ = COLMMWeight(
                 f"model.layers.{self.layer_num_}.self_attn.o_proj.weight",
                 self.data_type_,

@@ -48,8 +48,8 @@ def _fwd_kernel(
     cur_head = tl.program_id(1)
     start_m = tl.program_id(2)
 
-    # cur_kv_head = cur_head // kv_group_num # cur_kv_head 永远是0
-    cur_kv_head = 0
+    cur_kv_head = cur_head // kv_group_num  # cur_kv_head 永远是0
+    # cur_kv_head = 0
 
     cur_batch_in_all_start_index = tl.load(B_Start_Loc + cur_batch)
     prompt_cache_len = tl.load(b_prompt_cache_len + cur_batch)
@@ -263,7 +263,7 @@ def _fwd_kernel_no_prompt_cache(
     start_m = tl.program_id(2)
 
     cur_kv_head = cur_head // kv_group_num
-    cur_kv_head = 0
+    # cur_kv_head = 0
 
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
     cur_batch_in_all_start_index = tl.load(B_Start_Loc + cur_batch)
@@ -311,14 +311,13 @@ def _fwd_kernel_no_prompt_cache(
             mask=(start_n + offs_n[None, :]) < cur_batch_seq_len,
             other=0.0,
         )
+        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        qk += tl.dot(q, kv)
         kv_rope = tl.load(
             kv_rope_ptrs + (cur_batch_in_all_start_index + start_n) * stride_kv_rope_bs,
             mask=(start_n + offs_n[None, :]) < cur_batch_seq_len,
             other=0.0,
         )
-
-        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-        qk += tl.dot(q, kv)
         qk += tl.dot(q_rope, kv_rope)
         qk *= sm_scale
         qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
@@ -375,10 +374,12 @@ def context_attention_fwd_no_prompt_cache(
 
     if q_nope.dtype == torch.float32:
         BLOCK = BLOCK // 4
+    print(q_nope.shape, kv_nope.shape)
+    print(q_rope.shape, kv_rope.shape)
 
     sm_scale = softmax_scale
     batch, head = b_seq_len.shape[0], q_nope.shape[1]
-    kv_group_num = q_nope.shape[1]
+    kv_group_num = q_nope.shape[1] // kv_nope.shape[1]
 
     grid = (batch, head, triton.cdiv(max_input_len, BLOCK))  # batch, head,
 
