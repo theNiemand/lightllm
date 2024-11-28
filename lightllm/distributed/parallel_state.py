@@ -54,6 +54,7 @@ import torch.distributed
 from torch.distributed import Backend, ProcessGroup
 
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.vllm_utils import supports_custom_op
 
 original_all_reduce = torch.distributed.all_reduce
 original_get_world_size = torch.distributed.get_world_size
@@ -66,10 +67,6 @@ class GraphCaptureContext:
 
 
 TensorMetadata = namedtuple("TensorMetadata", ["device", "dtype", "size"])
-
-
-def supports_custom_op():
-    return False
 
 
 def _split_tensor_dict(
@@ -222,8 +219,7 @@ class GroupCoordinator:
         self.use_tpu_communicator = use_tpu_communicator
 
         # lazy import to avoid documentation build error
-        # from vllm.distributed.device_communicators.custom_all_reduce import (
-        #     CustomAllreduce)
+        from lightllm.distributed.device_communicators.custom_all_reduce import CustomAllreduce
         from lightllm.distributed.device_communicators.pynccl import PyNcclCommunicator
 
         self.pynccl_comm: Optional[PyNcclCommunicator] = None
@@ -233,13 +229,13 @@ class GroupCoordinator:
                 device=self.device,
             )
 
-        self.ca_comm = None
-        # if use_custom_allreduce and self.world_size > 1:
-        # Initialize a custom fast all-reduce implementation.
-        # self.ca_comm = CustomAllreduce(
-        # group=self.cpu_group,
-        # device=self.device,
-        # )
+        self.ca_comm: Optional[CustomAllreduce] = None
+        if use_custom_allreduce and self.world_size > 1:
+            # Initialize a custom fast all-reduce implementation.
+            self.ca_comm = CustomAllreduce(
+                group=self.cpu_group,
+                device=self.device,
+            )
 
         # from vllm.distributed.device_communicators.tpu_communicator import (
         #     TpuCommunicator)
@@ -249,7 +245,7 @@ class GroupCoordinator:
 
         from lightllm.distributed.device_communicators.shm_broadcast import MessageQueue
 
-        self.mq_broadcaster = None
+        self.mq_broadcaster: Optional[MessageQueue] = None
         if use_message_queue_broadcaster and self.world_size > 1:
             self.mq_broadcaster = MessageQueue.create_from_process_group(self.cpu_group, 1 << 22, 6)
 
@@ -354,9 +350,9 @@ class GroupCoordinator:
             self._all_reduce_in_place(input_)
             return input_
 
-        if self.tpu_communicator is not None and not self.tpu_communicator.disabled:
-            # TPU handles Dynamo with its own logic.
-            return self.tpu_communicator.all_reduce(input_)
+        # if self.tpu_communicator is not None and not self.tpu_communicator.disabled:
+        # TPU handles Dynamo with its own logic.
+        # return self.tpu_communicator.all_reduce(input_)
 
         if self.ca_comm is not None and not self.ca_comm.disabled and self.ca_comm.should_custom_ar(input_):
             return torch.ops.vllm.outplace_all_reduce(input_, group_name=self.unique_name)
@@ -841,7 +837,7 @@ def graph_capture():
 
 logger = init_logger(__name__)
 
-_ENABLE_CUSTOM_ALL_REDUCE = False
+_ENABLE_CUSTOM_ALL_REDUCE = True
 
 
 def set_custom_all_reduce(enable: bool):

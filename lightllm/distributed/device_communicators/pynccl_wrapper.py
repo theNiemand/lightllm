@@ -47,7 +47,7 @@ import torch
 from torch.distributed import ReduceOp
 
 from lightllm.utils.log_utils import init_logger
-from lightllm.utils.distributed_utils import find_nccl_library
+from lightllm.utils.vllm_utils import find_nccl_library
 
 logger = init_logger(__name__)
 
