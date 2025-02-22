@@ -320,7 +320,7 @@ def grouped_matmul_kernel(
                 b_ptrs = (
                     weights_ptr + weight_stride_0 * expert_id + offs_k[None, :] + offs_bn[:, None] * weight_stride_1
                 )
-                accumulator = tl.zeros((BLOCK_SIZE_N, BLOCK_SIZE_M), dtype=tl.float32)
+                accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
             else:
                 a_ptrs = token_ptr + (a_m_index // topk_num)[:, None] * token_stride_0 + offs_k[None, :]
                 b_ptrs = (
@@ -345,7 +345,8 @@ def grouped_matmul_kernel(
                         offs_ks = step_k * BLOCK_SIZE_K // block_size_k
                         a_scale = tl.load(a_scale_ptrs + offs_ks, mask=offs_am < cur_m, other=0.0)
                         b_scale = tl.load(b_scale_ptrs + offs_ks * weight_scale_stride2)
-                        accumulator += tl.dot(b, a) * b_scale[:, None] * a_scale[None, :]
+                        # accumulator += tl.dot(b, a) * b_scale[:, None] * a_scale[None, :]
+                        accumulator += tl.dot(a.T, b.T) * a_scale[:, None] * b_scale[None, :]
                     else:
                         accumulator = tl.dot(b, a, acc=accumulator)
                 else:
@@ -357,9 +358,9 @@ def grouped_matmul_kernel(
 
             if use_fp8_w8a8:
                 if block_size_k > 0 and block_size_n > 0:
-                    accumulator = accumulator.T
+                    accumulator = accumulator
                 else:
-                    accumulator = accumulator.T
+                    accumulator = accumulator
                     accumulator *= ab_scale
 
             if MUL_ROUTED_WEIGHT:
