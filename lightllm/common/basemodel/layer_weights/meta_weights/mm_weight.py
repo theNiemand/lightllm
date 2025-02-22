@@ -497,7 +497,7 @@ class ROWBMMWeight(BMMWeight):
     def dequant_weight(self, weight: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
         # for Deepseek v3
         # TODO a fast bmm quant kernel
-        weight = weight.to(self.data_type_)
+        weight = weight.to(torch.float)
         block_size = weight.shape[-1] // scale.shape[-1]
         w_shape = weight.shape
         s_shape = scale.shape
