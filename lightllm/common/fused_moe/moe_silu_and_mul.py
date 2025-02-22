@@ -37,7 +37,7 @@ def _silu_and_mul_kernel(
         input_ptr + up_offsets,
         mask=(input_n_offsets < size_n)[None, :] * (input_m_offsets < size_m)[:, None],
         other=0.0,
-    )
+    ).to(tl.float32)
     gate = tl.load(
         input_ptr + gate_offsets,
         mask=(input_n_offsets < size_n)[None, :] * (input_m_offsets < size_m)[:, None],
@@ -45,7 +45,7 @@ def _silu_and_mul_kernel(
     ).to(tl.float32)
 
     gate = gate / (1 + tl.exp(-gate))
-    gate = gate.to(input_ptr.dtype.element_ty)
+    # gate = gate.to(input_ptr.dtype.element_ty)
 
     tl.store(
         output_ptr + res_offsets,
