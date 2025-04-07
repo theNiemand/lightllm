@@ -11,6 +11,7 @@ import datetime
 import websockets
 from frozendict import frozendict
 import pickle
+import aiohttp
 import ujson as json
 import multiprocessing
 
@@ -228,7 +229,8 @@ class HttpServerManager:
                 original_multimodal_params = copy.deepcopy(multimodal_params)
 
             if self.pd_mode.is_P_or_NORMAL():
-                multimodal_params.verify_and_preload()
+                async with aiohttp.ClientSession() as session:
+                    await multimodal_params.verify_and_preload(session)
 
             # 记录请求到达的相关信息
             await self._log_req_header(request_headers, group_request_id)

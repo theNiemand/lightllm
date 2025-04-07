@@ -5,6 +5,8 @@ import requests
 from io import BytesIO
 from PIL import Image
 import base64
+import aiohttp
+import asyncio
 
 
 class ImageItem:
@@ -23,14 +25,18 @@ class ImageItem:
         self._preload_data = None
         self.extra_params = {}
 
-    def preload(self):
+    async def preload(self, session: aiohttp.ClientSession):
         try:
             if self._type == "url":
                 timeout = int(os.getenv("REQUEST_TIMEOUT", "3"))
                 # 这个地方获取数据有问题，应该修改为异步协程方式获取，否则会阻塞原有的线程
                 # to do
-                ret = requests.get(self._data, timeout=timeout)
-                img_data = ret.content
+                # ret = requests.get(self._data, timeout=timeout)
+                # img_data = ret.content
+                async with session.get(self._data, timeout=timeout) as resp:
+                    resp.raise_for_status()
+                    img_data = await resp.read()
+
             elif self._type == "base64":
                 img_data = base64.b64decode(self._data)
             elif self._type == "image_size":
@@ -83,10 +89,10 @@ class MultimodalParams:
         self.images = [ImageItem(**i) for i in images]
         return
 
-    def verify_and_preload(self):
-        for image in self.images:
-            image.preload()
-        return
+    async def verify_and_preload(self, session: aiohttp.ClientSession):
+        # for image in self.images:
+        #     image.preload()
+        await asyncio.gather(*(image.preload(session) for image in self.images))
 
     def to_dict(self):
         ret = {}
